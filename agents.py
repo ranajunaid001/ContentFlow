@@ -1,13 +1,13 @@
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
-from langchain_community.tools import DuckDuckGoSearchRun
-from langchain.callbacks import LangChainTracer
+from tavily import TavilyClient
 from datetime import datetime
 import time
+import os
 from config import AGENT_MODELS, LANGSMITH_CONFIG, AGENT_TAGS, PERFORMANCE_THRESHOLDS
 
 # Initialize tools
-search = DuckDuckGoSearchRun()
+tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 # Initialize models with config
 models = {
@@ -23,16 +23,17 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Research agent that gathers information on the topic"""
     start_time = time.time()
     
-    # LangSmith tracing - FIXED!
-    tracer = LangChainTracer(
-        project_name=LANGSMITH_CONFIG["project_name"],
-        tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["research"]
-    )
-    
     topic = state["topic"]
     
-    # Search for information
-    search_results = search.run(f"{topic} latest news 2024")
+    # Search using Tavily
+    try:
+        search_response = tavily.search(f"{topic} latest news 2024", max_results=5)
+        search_results = "\n".join([f"- {r['content']}" for r in search_response['results']])
+        sources = [r['url'] for r in search_response['results']][:3]  # Top 3 sources
+    except Exception as e:
+        # Fallback if search fails
+        search_results = f"Search unavailable. Using general knowledge about {topic}."
+        sources = ["General knowledge"]
     
     # Generate research findings
     research_prompt = f"""
@@ -43,15 +44,11 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     Format as a list of clear, concise statements.
     """
     
-    # FIXED: Pass tracer in config, not as context manager
-    findings = models["research"].invoke(
-        research_prompt,
-        config={"callbacks": [tracer], "run_name": "research_extraction"}
-    ).content
+    findings = models["research"].invoke(research_prompt).content
     
     # Performance tracking
     duration = time.time() - start_time
-    findings_list = findings.split("\n")
+    findings_list = [f.strip() for f in findings.split("\n") if f.strip()]
     
     performance_data = {
         "duration": duration,
@@ -65,7 +62,7 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         **state,
         "research_findings": findings_list,
-        "research_sources": [search_results[:200]],
+        "research_sources": sources,
         "status": "research_complete",
         "messages": state.get("messages", []) + [f"Research completed in {duration:.2f}s"],
         "performance_metrics": {
@@ -77,11 +74,6 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 def writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Writer agent that creates full article"""
     start_time = time.time()
-    
-    tracer = LangChainTracer(
-        project_name=LANGSMITH_CONFIG["project_name"],
-        tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["writer"]
-    )
     
     topic = state["topic"]
     research = "\n".join(state["research_findings"])
@@ -100,18 +92,11 @@ def writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     Make it informative and engaging. About 500-700 words.
     """
     
-    # FIXED: No context manager
-    article = models["writer"].invoke(
-        writer_prompt,
-        config={"callbacks": [tracer], "run_name": "article_generation"}
-    ).content
+    article = models["writer"].invoke(writer_prompt).content
     
     # Generate title
     title_prompt = f"Create a catchy title for this article about {topic}"
-    title = models["writer"].invoke(
-        title_prompt,
-        config={"callbacks": [tracer], "run_name": "title_generation"}
-    ).content
+    title = models["writer"].invoke(title_prompt).content
     
     # Performance tracking
     duration = time.time() - start_time
@@ -142,11 +127,6 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Newsletter agent that creates email summary"""
     start_time = time.time()
     
-    tracer = LangChainTracer(
-        project_name=LANGSMITH_CONFIG["project_name"],
-        tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["newsletter"]
-    )
-    
     article = state["full_article"]
     title = state["article_title"]
     
@@ -163,11 +143,7 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     4. Email-friendly formatting
     """
     
-    # FIXED: No context manager
-    summary = models["newsletter"].invoke(
-        summary_prompt,
-        config={"callbacks": [tracer], "run_name": "newsletter_summary"}
-    ).content
+    summary = models["newsletter"].invoke(summary_prompt).content
     
     # Create email subject
     subject = f"Newsletter: {title}"
