@@ -149,6 +149,12 @@ async def send_newsletter_email(email: str, subject: str, body: str):
     # - Mailgun
     # - SMTP
 
+# Serve the UI
+@app.get("/ui", response_class=HTMLResponse)
+async def serve_ui():
+    with open("index.html", "r") as f:
+        return f.read()
+        
 # Root endpoint
 @app.get("/")
 async def root():
