@@ -4,11 +4,11 @@ uvicorn[standard]==0.27.1
 pydantic==2.6.1
 pydantic[email]
 
-# LangChain & LangGraph
-langchain==0.1.16
-langchain-openai==0.1.3
-langchain-community==0.0.34
-langgraph==0.0.55
+# LangChain & LangGraph - Updated versions
+langchain==0.2.11
+langchain-openai==0.1.20
+langchain-community==0.2.10
+langgraph==0.2.14
 
 # LangSmith (for monitoring)
 langsmith==0.1.40
