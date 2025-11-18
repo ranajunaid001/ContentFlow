@@ -1,90 +1,173 @@
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain.callbacks import LangChainTracer
 from datetime import datetime
+import time
+from config import AGENT_MODELS, LANGSMITH_CONFIG, AGENT_TAGS, PERFORMANCE_THRESHOLDS
 
 # Initialize tools
-llm = ChatOpenAI(temperature=0.7, model="gpt-4-turbo-preview")
 search = DuckDuckGoSearchRun()
+
+# Initialize models with config
+models = {
+    agent: ChatOpenAI(
+        model=config["model"],
+        temperature=config["temperature"],
+        max_tokens=config.get("max_tokens", 1000)
+    )
+    for agent, config in AGENT_MODELS.items()
+}
 
 def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Research agent that gathers information on the topic"""
+    start_time = time.time()
+    
+    # LangSmith tracing
+    tracer = LangChainTracer(
+        project_name=LANGSMITH_CONFIG["project_name"],
+        tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["research"]
+    )
+    
     topic = state["topic"]
     
-    # Search for information
-    search_results = search.run(f"{topic} latest news 2024")
+    # Search for information with tracing
+    with tracer:
+        search_results = search.run(f"{topic} latest news 2024")
+        
+        # Generate research findings
+        research_prompt = f"""
+        Based on these search results about {topic}:
+        {search_results}
+        
+        Extract 5-7 key findings or important points.
+        Format as a list of clear, concise statements.
+        """
+        
+        findings = models["research"].invoke(
+            research_prompt,
+            config={"callbacks": [tracer], "run_name": "research_extraction"}
+        ).content
     
-    # Generate research findings
-    research_prompt = f"""
-    Based on these search results about {topic}:
-    {search_results}
+    # Performance tracking
+    duration = time.time() - start_time
+    findings_list = findings.split("\n")
     
-    Extract 5-7 key findings or important points.
-    Format as a list of clear, concise statements.
-    """
-    
-    findings = llm.invoke(research_prompt).content
+    performance_data = {
+        "duration": duration,
+        "findings_count": len(findings_list),
+        "passed_thresholds": {
+            "time": duration <= PERFORMANCE_THRESHOLDS["research"]["max_duration_seconds"],
+            "findings": len(findings_list) >= PERFORMANCE_THRESHOLDS["research"]["min_findings"]
+        }
+    }
     
     return {
         **state,
-        "research_findings": findings.split("\n"),
+        "research_findings": findings_list,
         "research_sources": [search_results[:200]],
         "status": "research_complete",
-        "messages": state.get("messages", []) + ["Research completed"]
+        "messages": state.get("messages", []) + [f"Research completed in {duration:.2f}s"],
+        "performance_metrics": {
+            **state.get("performance_metrics", {}),
+            "research": performance_data
+        }
     }
 
 def writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Writer agent that creates full article"""
+    start_time = time.time()
+    
+    tracer = LangChainTracer(
+        project_name=LANGSMITH_CONFIG["project_name"],
+        tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["writer"]
+    )
+    
     topic = state["topic"]
     research = "\n".join(state["research_findings"])
     
-    writer_prompt = f"""
-    Write a comprehensive article about {topic}.
+    with tracer:
+        writer_prompt = f"""
+        Write a comprehensive article about {topic}.
+        
+        Use these research findings:
+        {research}
+        
+        Structure:
+        1. Engaging introduction
+        2. Main body with 3-4 sections
+        3. Conclusion
+        
+        Make it informative and engaging. About 500-700 words.
+        """
+        
+        article = models["writer"].invoke(
+            writer_prompt,
+            config={"callbacks": [tracer], "run_name": "article_generation"}
+        ).content
+        
+        # Generate title
+        title_prompt = f"Create a catchy title for this article about {topic}"
+        title = models["writer"].invoke(
+            title_prompt,
+            config={"callbacks": [tracer], "run_name": "title_generation"}
+        ).content
     
-    Use these research findings:
-    {research}
+    # Performance tracking
+    duration = time.time() - start_time
+    word_count = len(article.split())
     
-    Structure:
-    1. Engaging introduction
-    2. Main body with 3-4 sections
-    3. Conclusion
-    
-    Make it informative and engaging. About 500-700 words.
-    """
-    
-    article = llm.invoke(writer_prompt).content
-    
-    # Generate title
-    title_prompt = f"Create a catchy title for this article about {topic}"
-    title = llm.invoke(title_prompt).content
+    performance_data = {
+        "duration": duration,
+        "word_count": word_count,
+        "passed_thresholds": {
+            "time": duration <= PERFORMANCE_THRESHOLDS["writer"]["max_duration_seconds"],
+            "word_count": word_count >= PERFORMANCE_THRESHOLDS["writer"]["min_word_count"]
+        }
+    }
     
     return {
         **state,
         "full_article": article,
         "article_title": title,
         "status": "writing_complete",
-        "messages": state.get("messages", []) + ["Article written"]
+        "messages": state.get("messages", []) + [f"Article written in {duration:.2f}s ({word_count} words)"],
+        "performance_metrics": {
+            **state.get("performance_metrics", {}),
+            "writer": performance_data
+        }
     }
 
 def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Newsletter agent that creates email summary"""
+    start_time = time.time()
+    
+    tracer = LangChainTracer(
+        project_name=LANGSMITH_CONFIG["project_name"],
+        tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["newsletter"]
+    )
+    
     article = state["full_article"]
     title = state["article_title"]
     
-    summary_prompt = f"""
-    Create a newsletter summary of this article:
-    
-    Title: {title}
-    Article: {article}
-    
-    Make it:
-    1. 150-200 words
-    2. Highlight key points
-    3. Include a call-to-action
-    4. Email-friendly formatting
-    """
-    
-    summary = llm.invoke(summary_prompt).content
+    with tracer:
+        summary_prompt = f"""
+        Create a newsletter summary of this article:
+        
+        Title: {title}
+        Article: {article}
+        
+        Make it:
+        1. 150-200 words
+        2. Highlight key points
+        3. Include a call-to-action
+        4. Email-friendly formatting
+        """
+        
+        summary = models["newsletter"].invoke(
+            summary_prompt,
+            config={"callbacks": [tracer], "run_name": "newsletter_summary"}
+        ).content
     
     # Create email subject
     subject = f"Newsletter: {title}"
@@ -101,11 +184,28 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     <p>Generated on {datetime.now().strftime('%B %d, %Y')}</p>
     """
     
+    # Performance tracking
+    duration = time.time() - start_time
+    summary_word_count = len(summary.split())
+    
+    performance_data = {
+        "duration": duration,
+        "word_count": summary_word_count,
+        "passed_thresholds": {
+            "time": duration <= PERFORMANCE_THRESHOLDS["newsletter"]["max_duration_seconds"],
+            "word_count": summary_word_count >= PERFORMANCE_THRESHOLDS["newsletter"]["min_word_count"]
+        }
+    }
+    
     return {
         **state,
         "newsletter_summary": summary,
         "email_subject": subject,
         "email_body": email_body,
         "status": "newsletter_complete",
-        "messages": state.get("messages", []) + ["Newsletter created"]
+        "messages": state.get("messages", []) + [f"Newsletter created in {duration:.2f}s"],
+        "performance_metrics": {
+            **state.get("performance_metrics", {}),
+            "newsletter": performance_data
+        }
     }
