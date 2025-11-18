@@ -1,13 +1,9 @@
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
-from tavily import TavilyClient
 from datetime import datetime
 import time
 import os
 from config import AGENT_MODELS, LANGSMITH_CONFIG, AGENT_TAGS, PERFORMANCE_THRESHOLDS
-
-# Initialize tools
-tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 # Initialize models with config
 models = {
@@ -25,30 +21,26 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     
     topic = state["topic"]
     
-    # Search using Tavily
-    try:
-        search_response = tavily.search(f"{topic} latest news 2024", max_results=5)
-        search_results = "\n".join([f"- {r['content']}" for r in search_response['results']])
-        sources = [r['url'] for r in search_response['results']][:3]  # Top 3 sources
-    except Exception as e:
-        # Fallback if search fails
-        search_results = f"Search unavailable. Using general knowledge about {topic}."
-        sources = ["General knowledge"]
-    
-    # Generate research findings
+    # Generate research using GPT knowledge
     research_prompt = f"""
-    Based on these search results about {topic}:
-    {search_results}
+    Generate 5-7 key findings about: {topic}
     
-    Extract 5-7 key findings or important points.
-    Format as a list of clear, concise statements.
+    Focus on:
+    - Recent developments and trends
+    - Important facts and statistics
+    - Key players and innovations
+    - Future implications
+    
+    Format as a numbered list of clear, concise statements.
     """
     
     findings = models["research"].invoke(research_prompt).content
     
+    # Parse findings into list
+    findings_list = [f.strip() for f in findings.split('\n') if f.strip() and any(char.isalpha() for char in f)]
+    
     # Performance tracking
     duration = time.time() - start_time
-    findings_list = [f.strip() for f in findings.split("\n") if f.strip()]
     
     performance_data = {
         "duration": duration,
@@ -62,7 +54,7 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     return {
         **state,
         "research_findings": findings_list,
-        "research_sources": sources,
+        "research_sources": ["GPT-4 Knowledge Base"],
         "status": "research_complete",
         "messages": state.get("messages", []) + [f"Research completed in {duration:.2f}s"],
         "performance_metrics": {
@@ -96,7 +88,7 @@ def writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Generate title
     title_prompt = f"Create a catchy title for this article about {topic}"
-    title = models["writer"].invoke(title_prompt).content
+    title = models["writer"].invoke(title_prompt).content.strip().strip('"')
     
     # Performance tracking
     duration = time.time() - start_time
@@ -150,14 +142,22 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Create email body
     email_body = f"""
-    <h2>{title}</h2>
-    
-    {summary}
-    
-    <p><a href="#">Read Full Article</a></p>
-    
-    <hr>
-    <p>Generated on {datetime.now().strftime('%B %d, %Y')}</p>
+    <html>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #333;">{title}</h2>
+        
+        <div style="line-height: 1.6; color: #555;">
+            {summary.replace('\n', '<br><br>')}
+        </div>
+        
+        <p style="margin-top: 30px;">
+            <a href="#" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Read Full Article</a>
+        </p>
+        
+        <hr style="margin-top: 40px; border: none; border-top: 1px solid #eee;">
+        <p style="font-size: 12px; color: #999;">Generated on {datetime.now().strftime('%B %d, %Y')}</p>
+    </body>
+    </html>
     """
     
     # Performance tracking
