@@ -1,5 +1,3 @@
-from langsmith import Client
-import os
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
@@ -25,7 +23,7 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """Research agent that gathers information on the topic"""
     start_time = time.time()
     
-    # LangSmith tracing
+    # LangSmith tracing - FIXED!
     tracer = LangChainTracer(
         project_name=LANGSMITH_CONFIG["project_name"],
         tags=LANGSMITH_CONFIG["tags"] + AGENT_TAGS["research"]
@@ -33,23 +31,23 @@ def research_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     
     topic = state["topic"]
     
-    # Search for information with tracing
-    with tracer:
-        search_results = search.run(f"{topic} latest news 2024")
-        
-        # Generate research findings
-        research_prompt = f"""
-        Based on these search results about {topic}:
-        {search_results}
-        
-        Extract 5-7 key findings or important points.
-        Format as a list of clear, concise statements.
-        """
-        
-        findings = models["research"].invoke(
-            research_prompt,
-            config={"callbacks": [tracer], "run_name": "research_extraction"}
-        ).content
+    # Search for information
+    search_results = search.run(f"{topic} latest news 2024")
+    
+    # Generate research findings
+    research_prompt = f"""
+    Based on these search results about {topic}:
+    {search_results}
+    
+    Extract 5-7 key findings or important points.
+    Format as a list of clear, concise statements.
+    """
+    
+    # FIXED: Pass tracer in config, not as context manager
+    findings = models["research"].invoke(
+        research_prompt,
+        config={"callbacks": [tracer], "run_name": "research_extraction"}
+    ).content
     
     # Performance tracking
     duration = time.time() - start_time
@@ -88,32 +86,32 @@ def writer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     topic = state["topic"]
     research = "\n".join(state["research_findings"])
     
-    with tracer:
-        writer_prompt = f"""
-        Write a comprehensive article about {topic}.
-        
-        Use these research findings:
-        {research}
-        
-        Structure:
-        1. Engaging introduction
-        2. Main body with 3-4 sections
-        3. Conclusion
-        
-        Make it informative and engaging. About 500-700 words.
-        """
-        
-        article = models["writer"].invoke(
-            writer_prompt,
-            config={"callbacks": [tracer], "run_name": "article_generation"}
-        ).content
-        
-        # Generate title
-        title_prompt = f"Create a catchy title for this article about {topic}"
-        title = models["writer"].invoke(
-            title_prompt,
-            config={"callbacks": [tracer], "run_name": "title_generation"}
-        ).content
+    writer_prompt = f"""
+    Write a comprehensive article about {topic}.
+    
+    Use these research findings:
+    {research}
+    
+    Structure:
+    1. Engaging introduction
+    2. Main body with 3-4 sections
+    3. Conclusion
+    
+    Make it informative and engaging. About 500-700 words.
+    """
+    
+    # FIXED: No context manager
+    article = models["writer"].invoke(
+        writer_prompt,
+        config={"callbacks": [tracer], "run_name": "article_generation"}
+    ).content
+    
+    # Generate title
+    title_prompt = f"Create a catchy title for this article about {topic}"
+    title = models["writer"].invoke(
+        title_prompt,
+        config={"callbacks": [tracer], "run_name": "title_generation"}
+    ).content
     
     # Performance tracking
     duration = time.time() - start_time
@@ -152,24 +150,24 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     article = state["full_article"]
     title = state["article_title"]
     
-    with tracer:
-        summary_prompt = f"""
-        Create a newsletter summary of this article:
-        
-        Title: {title}
-        Article: {article}
-        
-        Make it:
-        1. 150-200 words
-        2. Highlight key points
-        3. Include a call-to-action
-        4. Email-friendly formatting
-        """
-        
-        summary = models["newsletter"].invoke(
-            summary_prompt,
-            config={"callbacks": [tracer], "run_name": "newsletter_summary"}
-        ).content
+    summary_prompt = f"""
+    Create a newsletter summary of this article:
+    
+    Title: {title}
+    Article: {article}
+    
+    Make it:
+    1. 150-200 words
+    2. Highlight key points
+    3. Include a call-to-action
+    4. Email-friendly formatting
+    """
+    
+    # FIXED: No context manager
+    summary = models["newsletter"].invoke(
+        summary_prompt,
+        config={"callbacks": [tracer], "run_name": "newsletter_summary"}
+    ).content
     
     # Create email subject
     subject = f"Newsletter: {title}"
