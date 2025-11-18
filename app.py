@@ -159,6 +159,15 @@ async def serve_ui():
             return f.read()
     except FileNotFoundError:
         return "<h1>UI file not found. Make sure index.html is in the root directory.</h1>"
+
+# Serve the Dashboard
+@app.get("/dashboard", response_class=HTMLResponse)
+async def serve_dashboard():
+    try:
+        with open("dashboard.html", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>Dashboard file not found. Make sure dashboard.html is in the root directory.</h1>"
         
 # Root endpoint
 @app.get("/")
