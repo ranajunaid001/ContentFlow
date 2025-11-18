@@ -140,6 +140,9 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     # Create email subject
     subject = f"Newsletter: {title}"
     
+    # Fix for f-string error - do replacement before the f-string
+    summary_html = summary.replace('\n', '<br><br>')
+    
     # Create email body
     email_body = f"""
     <html>
@@ -147,7 +150,7 @@ def newsletter_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         <h2 style="color: #333;">{title}</h2>
         
         <div style="line-height: 1.6; color: #555;">
-            {summary.replace('\n', '<br><br>')}
+            {summary_html}
         </div>
         
         <p style="margin-top: 30px;">
