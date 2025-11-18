@@ -4,17 +4,17 @@ uvicorn==0.27.1
 pydantic==2.6.1
 email-validator==2.1.0
 
-# LangChain Ecosystem (Compatible Versions)
+# LangChain Ecosystem - LET PIP SOLVE IT
 langchain==0.2.11
 langchain-openai==0.1.20
 langchain-community==0.2.10
-langchain-core==0.2.26
 langgraph==0.2.14
-langsmith==0.1.125
+langchain-core  # NO VERSION PIN
+langsmith  # NO VERSION PIN
 
 # AI/LLM
-openai==1.35.0
-tiktoken==0.7.0
+openai
+tiktoken
 
 # Search & Tools  
 duckduckgo-search==5.3.0
