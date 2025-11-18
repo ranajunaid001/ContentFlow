@@ -1,3 +1,5 @@
+from langsmith import Client
+import os
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_community.tools import DuckDuckGoSearchRun
