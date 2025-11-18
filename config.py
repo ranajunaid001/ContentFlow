@@ -1,6 +1,4 @@
 import os
-from langchain.callbacks.manager import tracing_v2_enabled
-from langchain.smith import RunEvalConfig
 
 # Model Configuration
 AGENT_MODELS = {
@@ -26,17 +24,6 @@ LANGSMITH_CONFIG = {
     "project_name": "contentflow-agents",
     "tags": ["production", "newsletter"],
 }
-
-# LangSmith Evaluation Metrics
-EVAL_CONFIG = RunEvalConfig(
-    evaluators=[
-        "qa",  # Question-answering accuracy
-        "context_qa",  # Context relevance
-        "cot_qa",  # Chain of thought reasoning
-    ],
-    custom_evaluators=[],
-    eval_llm="gpt-4"
-)
 
 # Agent-specific LangSmith tags
 AGENT_TAGS = {
